@@ -16,11 +16,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 查看磁盘空间
+      # 1. Checkout 仓库，保证 images.txt 存在
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 查看初始磁盘
       - name: Initial Disk Info
         run: df -hT
 
-      # 2. 扩容磁盘
+      # 3. 扩容磁盘
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -30,22 +34,24 @@ jobs:
           remove-haskell: 'true'
           build-mount-path: '/var/lib/docker/'
 
-      # 3. 重启 Docker
+      # 4. 重启 Docker
       - name: Restart Docker
         run: sudo service docker restart
 
-      # 4. 登录阿里云
+      # 5. 登录阿里云
       - name: Login Aliyun ACR
         run: |
           docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
 
-      # 5. 设置 buildx 支持多架构
+      # 6. 设置 buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 6. 处理 images.txt
+      # 7. 处理 images.txt
       - name: Pull & Push Multi-Arch Images
         run: |
+          IMAGES_FILE="${GITHUB_WORKSPACE}/images.txt"
+
           while IFS= read -r line || [ -n "$line" ]; do
               # 跳过空行和注释
               [[ -z "$line" ]] && continue
@@ -64,8 +70,8 @@ jobs:
               docker pull --platform linux/arm64 $IMAGE
 
               # 给阿里云镜像打 tag
-              IMAGE_AMD="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-amd64"
-              IMAGE_ARM="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-arm64"
+              IMAGE_AMD="$ALYIUN_REGISTRY/$ALYIUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-amd64"
+              IMAGE_ARM="$ALYIUN_REGISTRY/$ALYIUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-arm64"
 
               docker tag $IMAGE $IMAGE_AMD
               docker tag $IMAGE $IMAGE_ARM
@@ -75,7 +81,7 @@ jobs:
               docker push $IMAGE_ARM
 
               # 创建 multi-arch manifest
-              IMAGE_MULTI="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
+              IMAGE_MULTI="$ALYIUN_REGISTRY/$ALYIUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
               docker buildx imagetools create -t $IMAGE_MULTI $IMAGE_AMD $IMAGE_ARM
 
               # 清理本地镜像
@@ -83,8 +89,8 @@ jobs:
 
               echo "Finished processing $IMAGE_MULTI"
               echo "====================================================="
-          done < images.txt
+          done < "$IMAGES_FILE"
 
-      # 7. 最终磁盘信息
+      # 8. 最终磁盘信息
       - name: Final Disk Info
         run: df -hT
