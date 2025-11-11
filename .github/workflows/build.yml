@@ -55,41 +55,43 @@ jobs:
         run: |
           set -e
           IMAGES_FILE="${GITHUB_WORKSPACE}/images.txt"
-
+          
           while IFS= read -r line || [ -n "$line" ]; do
-              [[ -z "$line" ]] && continue
-              [[ "$line" =~ ^# ]] && continue
-
-              IMAGE="$line"
-              IMAGE_NAME=$(echo "$IMAGE" | awk -F':' '{print $1}')
-              IMAGE_TAG=$(echo "$IMAGE" | awk -F':' '{print $2}')
-              
-              TARGET="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
-              TARGET_AMD="$TARGET-amd64"
-              TARGET_ARM="$TARGET-arm64"
-
-              echo "====================================================="
-              echo "Processing $IMAGE -> $TARGET"
-              echo "====================================================="
-
-              # 拉官方单架构镜像
-              docker pull --platform linux/amd64 "$IMAGE"
-              docker pull --platform linux/arm64 "$IMAGE"
-
-              # 打 tag 推送到阿里云（单架构镜像只为了构建 multi-arch manifest，推送后可以删除）
-              docker tag "$IMAGE" "$TARGET_AMD"
-              docker tag "$IMAGE" "$TARGET_ARM"
-              docker push "$TARGET_AMD"
-              docker push "$TARGET_ARM"
-
-              # 创建 multi-arch manifest 并推送
-              docker buildx imagetools create -t "$TARGET" "$TARGET_AMD" "$TARGET_ARM"
-
-              # 清理本地镜像
-              docker rmi "$IMAGE" "$TARGET_AMD" "$TARGET_ARM" || true
-
-              echo "✅ Synced multi-arch image: $TARGET"
-              echo "====================================================="
+          [[ -z "$line" ]] && continue
+          [[ "$line" =~ ^# ]] && continue
+          
+          IMAGE="$line"
+          IMAGE_NAME=$(echo "$IMAGE" | awk -F':' '{print $1}')
+          IMAGE_TAG=$(echo "$IMAGE" | awk -F':' '{print $2}')
+          
+          TARGET="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
+          TARGET_AMD="$TARGET-amd64"
+          TARGET_ARM="$TARGET-arm64"
+          
+          echo "====================================================="
+          echo "Processing $IMAGE -> $TARGET"
+          echo "====================================================="
+          
+          # 拉官方单架构镜像并立即重命名
+          docker pull --platform linux/amd64 "$IMAGE"
+          docker tag "$IMAGE" "${IMAGE_NAME}:${IMAGE_TAG}-amd64-local"
+          docker pull --platform linux/arm64 "$IMAGE"
+          docker tag "$IMAGE" "${IMAGE_NAME}:${IMAGE_TAG}-arm64-local"
+          
+          # 打 tag 推送到阿里云
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}-amd64-local" "$TARGET_AMD"
+          docker tag "${IMAGE_NAME}:${IMAGE_TAG}-arm64-local" "$TARGET_ARM"
+          docker push "$TARGET_AMD"
+          docker push "$TARGET_ARM"
+          
+          # 创建 multi-arch manifest 并推送
+          docker buildx imagetools create -t "$TARGET" "$TARGET_AMD" "$TARGET_ARM"
+          
+          # 清理本地镜像
+          docker rmi "${IMAGE_NAME}:${IMAGE_TAG}-amd64-local" "${IMAGE_NAME}:${IMAGE_TAG}-arm64-local" "$TARGET_AMD" "$TARGET_ARM" || true
+  
+          echo "✅ Synced multi-arch image: $TARGET"
+          echo "====================================================="
           done < "$IMAGES_FILE"
 
       # 8. 查看最终磁盘
