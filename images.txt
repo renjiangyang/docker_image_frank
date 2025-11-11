@@ -1,0 +1,2 @@
+## ubuntu LTS 版本
+ubuntu:24.04
