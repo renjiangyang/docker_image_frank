@@ -16,15 +16,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code (images.txt 在仓库根目录)
+      # 1. Checkout 代码（用于读取 images.txt）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 查看磁盘空间
-      - name: Initial Disk Info
-        run: df -hT
-
-      # 3. 扩容磁盘
+      # 2. 扩容磁盘，避免拉取大镜像失败
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -34,23 +30,31 @@ jobs:
           remove-haskell: 'true'
           build-mount-path: '/var/lib/docker/'
 
-      # 4. 重启 Docker
+      # 3. 重启 Docker
       - name: Restart Docker
         run: sudo service docker restart
 
-      # 5. 登录阿里云
+      # 4. 登录阿里云
       - name: Login Aliyun ACR
-        run: |
-          docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      # 6. 设置 buildx 支持多架构
+      # 5. 设置 buildx 支持多架构
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 7. 处理 images.txt
+      # 6. 安装 QEMU 支持
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 7. 拉取官方 multi-arch 镜像并 push 到阿里云
       - name: Pull & Push Multi-Arch Images
         run: |
           IMAGES_FILE="${GITHUB_WORKSPACE}/images.txt"
+
           while IFS= read -r line || [ -n "$line" ]; do
               # 跳过空行和注释
               [[ -z "$line" ]] && continue
@@ -59,34 +63,22 @@ jobs:
               IMAGE="$line"
               IMAGE_NAME=$(echo "$IMAGE" | awk -F':' '{print $1}')
               IMAGE_TAG=$(echo "$IMAGE" | awk -F':' '{print $2}')
+              TARGET="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
 
               echo "====================================================="
-              echo "Processing image: $IMAGE"
+              echo "Processing $IMAGE -> $TARGET"
               echo "====================================================="
 
-              # 拉取各平台官方镜像
-              docker pull --platform linux/amd64 $IMAGE
-              docker pull --platform linux/arm64 $IMAGE
+              # 使用 buildx 拉取多架构官方镜像并 push 到阿里云
+              docker buildx build \
+                  --platform linux/amd64,linux/arm64 \
+                  --pull \
+                  --tag $TARGET \
+                  --push \
+                  --load \
+                  .
 
-              # 临时 tag 到阿里云仓库
-              IMAGE_AMD="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-amd64"
-              IMAGE_ARM="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG-arm64"
-
-              docker tag $IMAGE $IMAGE_AMD
-              docker tag $IMAGE $IMAGE_ARM
-
-              # Push 各架构镜像到阿里云
-              docker push $IMAGE_AMD
-              docker push $IMAGE_ARM
-
-              # 创建 multi-arch manifest 指向远端镜像
-              IMAGE_MULTI="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$IMAGE_NAME:$IMAGE_TAG"
-              docker buildx imagetools create -t $IMAGE_MULTI $IMAGE_AMD $IMAGE_ARM
-
-              # 可选：删除本地临时镜像，释放空间
-              docker rmi $IMAGE $IMAGE_AMD $IMAGE_ARM
-
-              echo "Finished processing $IMAGE_MULTI"
+              echo "Finished $TARGET"
               echo "====================================================="
           done < "$IMAGES_FILE"
 
