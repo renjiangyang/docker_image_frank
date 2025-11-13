@@ -1,5 +1,10 @@
-## ubuntu LTS 版本 
+## SYSTEM ubuntu LTS 版本 
 #ubuntu:24.04
 #ubuntu:22.04
 
-registry:2.6.2
+## SYSTEM alpine 版本
+alpine:3.22
+alpine:3.21
+
+## 
+#registry:2.6.2
