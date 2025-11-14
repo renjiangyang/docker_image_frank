@@ -6,7 +6,8 @@
 #alpine:3.22
 #alpine:3.21
 #alpine:3.20
-alpine:3.19
+#alpine:3.19
+alpine:3.18
 
 ## 
 #registry:2.6.2
