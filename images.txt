@@ -3,8 +3,9 @@
 #ubuntu:22.04
 
 ## SYSTEM alpine 版本
-alpine:3.22
-alpine:3.21
+#alpine:3.22
+#alpine:3.21
+alpine:3.20
 
 ## 
 #registry:2.6.2
