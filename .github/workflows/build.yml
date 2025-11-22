@@ -50,7 +50,7 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
-      # 7. 拉官方镜像 + 生成 multi-arch manifest
+ # 7. 拉官方镜像 + 生成 multi-arch manifest（含自动清理）
       - name: Pull & Push Multi-Arch Manifest
         run: |
           set -e
@@ -64,7 +64,6 @@ jobs:
             IMAGE_NAME=$(echo "$ORIGINAL_IMAGE" | awk -F':' '{print $1}')
             IMAGE_TAG=$(echo "$ORIGINAL_IMAGE" | awk -F':' '{print $2}')
 
-            # -------- 关键修复：只取 basename，避免多级目录推送失败 --------
             BASE_NAME=$(basename "$IMAGE_NAME")
 
             TARGET="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$BASE_NAME:$IMAGE_TAG"
@@ -75,15 +74,15 @@ jobs:
             echo "Processing $ORIGINAL_IMAGE -> $TARGET"
             echo "====================================================="
 
-            # 拉官方镜像（amd64）
+            # 拉 amd64
             docker pull --platform linux/amd64 "$ORIGINAL_IMAGE"
             docker tag "$ORIGINAL_IMAGE" "${BASE_NAME}:${IMAGE_TAG}-amd64-local"
 
-            # 拉官方镜像（arm64）
+            # 拉 arm64
             docker pull --platform linux/arm64 "$ORIGINAL_IMAGE"
             docker tag "$ORIGINAL_IMAGE" "${BASE_NAME}:${IMAGE_TAG}-arm64-local"
 
-            # 推送到阿里云
+            # 推送架构镜像
             docker tag "${BASE_NAME}:${IMAGE_TAG}-amd64-local" "$TARGET_AMD"
             docker tag "${BASE_NAME}:${IMAGE_TAG}-arm64-local" "$TARGET_ARM"
             docker push "$TARGET_AMD"
@@ -92,15 +91,20 @@ jobs:
             # 创建 Multi-Arch Manifest
             docker buildx imagetools create -t "$TARGET" "$TARGET_AMD" "$TARGET_ARM"
 
-            # 清理本地镜像
-            docker rmi "${BASE_NAME}:${IMAGE_TAG}-amd64-local" \
-                      "${BASE_NAME}:${IMAGE_TAG}-arm64-local" \
-                      "$TARGET_AMD" "$TARGET_ARM" || true
+            # 关键：每个镜像完成后立即清理
+            echo "🧹 Cleaning local docker cache..."
+            docker rmi "${BASE_NAME}:${IMAGE_TAG}-amd64-local" || true
+            docker rmi "${BASE_NAME}:${IMAGE_TAG}-arm64-local" || true
+            docker rmi "$TARGET_AMD" || true
+            docker rmi "$TARGET_ARM" || true
+            docker system prune -f || true
 
             echo "✅ Synced multi-arch image: $TARGET"
             echo "====================================================="
           done < "$IMAGES_FILE"
 
-      # 8. 查看最终磁盘
-      - name: Final Disk Info
-        run: df -hT
+      # 额外：最后再来一次彻底清理
+      - name: Final Docker Cleanup
+        run: |
+          docker system prune -af || true
+          docker volume prune -f || true
