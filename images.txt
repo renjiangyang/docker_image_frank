@@ -11,8 +11,13 @@
 #alpine:3.17
 #alpine:3.16
 
+## SYSTEM ENV
+eclipse-temurin:8u462-b08-jdk
+eclipse-temurin:8u462-b08-jre
+
 ## 
 #registry:2.6.2
 
 ## 
-redislabs/redisinsight:2.70
+#redislabs/redisinsight:2.70
+
