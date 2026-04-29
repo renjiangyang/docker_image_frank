@@ -24,4 +24,6 @@ eclipse-temurin:17.0.16_8-jre
 #redislabs/redisinsight:2.70
 
 
-searxng/searxng:latest
+# searxng/searxng:latest
+
+redis/redis-stack:7.4.0-v8
